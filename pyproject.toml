@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "viento-resource-analyzer"
+version = "0.1.0"
+description = "Read-only static analyzer for FiveM fxmanifest.lua resource files"
+readme = "README.md"
+requires-python = ">=3.10"
+license = {file = "LICENSE"}
+authors = [{name = "cant0x"}]
+keywords = ["fivem", "fxmanifest", "static-analysis", "cfx", "linter"]
+classifiers = ["Programming Language :: Python :: 3", "Operating System :: OS Independent"]
+
+[project.scripts]
+vra = "viento_resource_analyzer.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
