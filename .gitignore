@@ -10,3 +10,10 @@ build/
 coverage.xml
 .coverage
 reports/
+
+# Locally generated reports may contain private paths or other scan metadata.
+/report.html
+/report.json
+/audit.html
+/dependencies.dot
+/dependencies.png

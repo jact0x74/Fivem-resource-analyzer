@@ -52,7 +52,7 @@ class Analyzer:
             line: int | None = None, location: Path | None = None) -> None:
         path = location or res.manifest_path
         self.findings.append(Finding(severity, code, res.name, message,
-                                     str(path.relative_to(self.root))
+                                     path.relative_to(self.root).as_posix()
                                      if path.is_relative_to(self.root) else path.name, line))
 
     def discover(self) -> None:
@@ -70,7 +70,7 @@ class Analyzer:
             except (OSError, UnicodeError) as exc:
                 self.findings.append(Finding('error', 'MANIFEST_UNREADABLE', path.parent.name,
                                              f'Cannot read manifest: {exc}',
-                                             str(path.relative_to(self.root))))
+                                             path.relative_to(self.root).as_posix()))
                 continue
             resource = Resource(path.parent.name, path.parent, path, parse_manifest(contents))
             self.resources.append(resource)

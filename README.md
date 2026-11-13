@@ -4,7 +4,7 @@
 
 A **read-only, dependency-free** static analyzer for [FiveM / Cfx.re resource manifests](https://docs.fivem.net/docs/scripting-reference/resource-manifest/). Scan a resource folder or a complete `resources/` directory, including `[category]` directories. No running FiveM server required.
 
-**Current version:** `v0.2.0` · Python 3.10+ · Windows, Linux, macOS · MIT licensed.
+**Current version:** `v0.2.1` · Python 3.10+ · Windows, Linux, macOS · MIT licensed.
 
 > Independent community project. Not affiliated with or endorsed by Cfx.re, FiveM, Rockstar Games or Anthropic.
 
@@ -17,7 +17,7 @@ A **read-only, dependency-free** static analyzer for [FiveM / Cfx.re resource ma
 - **Opt-in** Lua call heuristics for `loadstring(...)`, `load(...)`, `os.execute(...)`, and `io.popen(...)` in declared local `.lua` files.
 - Self-contained **HTML report**, JSON report for automation, and **Graphviz DOT** dependency graph output.
 
-All checks are **static**. The analyzer does not execute Lua, JavaScript, or resource files; it does not modify the source being scanned.
+All checks are **static**. The analyzer does not execute Lua, JavaScript, or resource files; it does not modify the source being scanned. Reported relative file paths consistently use `/` on every supported operating system.
 
 ## Quick start (Windows, no installation)
 
@@ -38,16 +38,16 @@ Scan your FiveM server's `resources` directory (read-only):
 py vra.py "C:\path\to\resources"
 ```
 
-### New in v0.2.0: HTML report
+### HTML report
 
 ```powershell
 py vra.py ".\examples\demo_resources" --format html --output report.html
 Start-Process .\report.html
 ```
 
-You can open `report.html` locally without internet. It includes resource counts, findings, dependency details, and a scanned-resource inventory. Input text is HTML-escaped. Reports contain local file paths; review them before sharing.
+You can open `report.html` locally without internet. It includes resource counts, findings, dependency details, and a scanned-resource inventory. Input text is HTML-escaped. Reports contain local file paths; review them before sharing. Generated root-level demo reports are Git-ignored to reduce accidental publishing of machine paths.
 
-### New in v0.2.0: dependency graph
+### Dependency graph
 
 ```powershell
 py vra.py "C:\path\to\resources" --format dot --output dependencies.dot
@@ -61,7 +61,7 @@ dot -Tpng dependencies.dot -o dependencies.png
 
 No Graphviz installation is required to **generate** the `.dot` file. Edges referring to missing or externally declared resources are dashed. A `provide` alias is resolved to its actual resource where known.
 
-### New in v0.2.0: optional Lua call review
+### Optional Lua call review
 
 ```powershell
 py vra.py "C:\path\to\resources" --audit-lua
@@ -128,7 +128,7 @@ Run tests:
 python -m unittest discover -s tests -v
 ```
 
-The test suite contains **38 tests** at release time. GitHub Actions runs tests on Python 3.10, 3.12, and 3.13.
+The test suite contains **40 tests** at release time. GitHub Actions runs tests on Windows and Ubuntu with Python 3.10, 3.12, and 3.13. Platform-restricted symlink tests may be skipped where unsupported.
 
 See [CONTRIBUTING.md](CONTRIBUTING.md), [SECURITY.md](SECURITY.md) and [CHANGELOG.md](CHANGELOG.md). Bugs and realistic test fixtures are welcome.
 

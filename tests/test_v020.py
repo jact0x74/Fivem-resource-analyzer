@@ -7,7 +7,7 @@ import json
 import sys
 import tempfile
 import unittest
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'src'))
 from viento_resource_analyzer.analyzer import Analyzer
@@ -132,6 +132,22 @@ class AnalyzerV020Tests(unittest.TestCase):
         issue = next(f for f in findings if f['code'] == 'LUA_DYNAMIC_EXEC')
         self.assertEqual(issue['line'], 2)
         self.assertEqual(issue['file'], 'a/main.lua')
+
+    def test_report_file_paths_use_slashes_for_multiple_finding_sources(self):
+        self.resource('a', BASE + "client_script 'missing.lua'\nserver_script 'main.lua'\n",
+                      {'main.lua': 'loadstring("return 1")'})
+        findings = Analyzer(self.root, audit_lua=True).run()['findings']
+        manifests = [f for f in findings if f['code'] == 'PATH_NOT_FOUND']
+        lua = [f for f in findings if f['code'] == 'LUA_DYNAMIC_EXEC']
+        self.assertEqual([f['file'] for f in manifests], ['a/fxmanifest.lua'])
+        self.assertEqual([f['file'] for f in lua], ['a/main.lua'])
+        self.assertTrue(all('\\' not in f['file'] for f in findings))
+
+    def test_windows_path_serializes_to_posix(self):
+        # Platform-neutral regression: on Windows Path.relative_to().as_posix()
+        # must produce the same value as a POSIX host.
+        self.assertEqual(PureWindowsPath(r'nested\a\main.lua').as_posix(),
+                         'nested/a/main.lua')
 
     def test_html_asset_missing_and_not_packed(self):
         self.resource('a', BASE + "ui_page 'html/index.html'\nfiles {'html/index.html'}\n",

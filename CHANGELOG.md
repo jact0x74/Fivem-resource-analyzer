@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.2.1
+
+- Fixed Windows path separators in finding `file` fields for consistent JSON, text and HTML output.
+- Added regression tests for manifest and Lua finding paths, plus Windows path serialization.
+- Added GitHub Actions CI runs on `windows-latest` as well as Ubuntu for Python 3.10, 3.12 and 3.13.
+- Ignored generated root-level reports to reduce accidental commits of local file paths.
+- No report schema changes; schema version remains `1.2`.
+
 ## 0.2.0
 
 - Added standalone, safely escaped HTML reports with resource inventory and dependency table.
