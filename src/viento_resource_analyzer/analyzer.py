@@ -1,13 +1,14 @@
 """Read-only checks for FiveM resource directories."""
 from __future__ import annotations
 
-import fnmatch
 import os
 from collections import Counter
 from dataclasses import dataclass, asdict
 from pathlib import Path
 
 from .manifest import Manifest, parse_manifest
+from .lua_audit import scan_lua
+from .nui import referenced_files
 
 SKIP_DIRS = {'.git', '.venv', 'venv', 'node_modules', '__pycache__', '.mypy_cache', '.pytest_cache'}
 SCRIPT_KEYS = {'client_script', 'server_script', 'shared_script',
@@ -39,18 +40,20 @@ class Resource:
 
 
 class Analyzer:
-    def __init__(self, root: Path, available: set[str] | None = None) -> None:
+    def __init__(self, root: Path, available: set[str] | None = None, *, audit_lua: bool = False) -> None:
         self.root = root.resolve()
         self.available = {v.casefold() for v in (available or set())}
         self.findings: list[Finding] = []
         self.resources: list[Resource] = []
+        self.audit_lua = audit_lua
+        self.dependency_edges: list[dict[str, str | None]] = []
 
     def add(self, severity: str, code: str, res: Resource, message: str,
-            line: int | None = None) -> None:
+            line: int | None = None, location: Path | None = None) -> None:
+        path = location or res.manifest_path
         self.findings.append(Finding(severity, code, res.name, message,
-                                     str(res.manifest_path.relative_to(self.root))
-                                     if res.manifest_path.is_relative_to(self.root)
-                                     else res.manifest_path.name, line))
+                                     str(path.relative_to(self.root))
+                                     if path.is_relative_to(self.root) else path.name, line))
 
     def discover(self) -> None:
         manifest_paths: list[Path] = []
@@ -127,52 +130,126 @@ class Analyzer:
             if manifest.values('lua54'):
                 self.add('info', 'LUA54_DEPRECATED', res,
                          'lua54 metadata is no longer required in current FXServer versions.')
+            self.check_nui_assets(res)
+            if self.audit_lua:
+                self.check_lua(res)
+
+
+    def check_nui_assets(self, res: Resource) -> None:
+        """Check literal local HTML src/link assets against the NUI packfile."""
+        manifest = res.manifest
+        packed: set[Path] = set()
+        for raw in manifest.values('file', 'files'):
+            matches = self._file_matches(res, raw)
+            if matches:
+                packed.update(p.resolve() for p in matches if p.is_file())
+        for raw in manifest.values('ui_page'):
+            if not raw.lower().endswith(('.html', '.htm')):
+                continue
+            pages = self._file_matches(res, raw)
+            if not pages or len(pages) != 1 or not pages[0].is_file():
+                continue
+            page = pages[0]
+            try:
+                if page.stat().st_size > 1024 * 1024:
+                    continue
+                html = page.read_text(encoding='utf-8-sig')
+            except (OSError, UnicodeError):
+                continue
+            for ref in sorted(referenced_files(html, raw)):
+                matches = self._file_matches(res, ref)
+                if not matches:
+                    self.add('warning', 'NUI_ASSET_MISSING', res,
+                             f'Local HTML asset {ref!r} is not present in this resource.', location=page)
+                elif any(p.resolve() not in packed for p in matches if p.is_file()):
+                    self.add('warning', 'NUI_ASSET_NOT_PACKED', res,
+                             f'Local HTML asset {ref!r} is not included in files/file.', location=page)
+
+    def check_lua(self, res: Resource) -> None:
+        """Review declared local .lua scripts without executing them (opt-in)."""
+        seen: set[Path] = set()
+        for key, raw, _ in res.manifest.paths():
+            if key not in SCRIPT_KEYS:
+                continue
+            matches = self._file_matches(res, raw)
+            for path in matches or []:
+                if not path.is_file() or path.suffix.casefold() != '.lua' or path in seen:
+                    continue
+                seen.add(path)
+                try:
+                    if path.stat().st_size > 2 * 1024 * 1024:
+                        self.add('info', 'LUA_AUDIT_SKIPPED', res,
+                                 f'Script exceeds 2 MiB audit size limit: {path.name}', location=path)
+                        continue
+                    contents = path.read_text(encoding='utf-8-sig')
+                except (OSError, UnicodeError):
+                    self.add('info', 'LUA_AUDIT_SKIPPED', res,
+                             f'Unable to read source file: {path.name}', location=path)
+                    continue
+                for flag in scan_lua(contents):
+                    self.add('warning', flag.code, res, flag.description,
+                             flag.line, location=path)
 
     def check_dependencies(self) -> None:
-        known = {res.name.casefold() for res in self.resources} | self.available
-        # 'provide' lets a resource fulfill a dependency on its replacement alias.
-        for res in self.resources:
-            known.update(p.casefold() for p in res.manifest.values('provide'))
-        graph: dict[str, set[str]] = {}
         lookup = {res.name.casefold(): res for res in self.resources}
+        aliases: dict[str, str] = {}
         for res in self.resources:
-            deps = res.manifest.values('dependency', 'dependencies')
+            for alias in res.manifest.values('provide'):
+                aliases.setdefault(alias.casefold(), res.name.casefold())
+        graph: dict[str, set[str]] = {key: set() for key in lookup}
+        for res in self.resources:
             owner = res.name.casefold()
-            graph.setdefault(owner, set())
-            for dep in deps:
+            for dep in res.manifest.values('dependency', 'dependencies'):
+                target = dep.casefold()
+                resolved = aliases.get(target, target)
                 if dep.startswith(SPECIAL_DEPS):
-                    continue
-                dep_key = dep.casefold()
-                if dep_key == owner:
-                    self.add('error', 'SELF_DEPENDENCY', res, 'Resource depends on itself.')
-                elif dep_key not in known:
+                    status = 'constraint'
+                elif resolved == owner:
+                    status = 'self'
+                    self.add('error', 'SELF_DEPENDENCY', res, f'Resource depends on itself via {dep!r}.')
+                elif resolved in lookup:
+                    status = 'provided' if target in aliases and target != resolved else 'local'
+                    graph[owner].add(resolved)
+                elif target in self.available:
+                    status = 'external'
+                else:
+                    status = 'missing'
                     self.add('warning', 'DEP_NOT_IN_SCAN', res,
                              f'Dependency {dep!r} was not found in the scanned tree. '
                              'It may exist elsewhere; pass --available to suppress this warning.')
-                elif dep_key in lookup:
-                    graph[owner].add(dep_key)
-        # DFS reports each directed back-edge once. Only discovered resources can form proven cycles.
+                self.dependency_edges.append({'resource': res.name, 'dependency': dep,
+                                              'status': status,
+                                              'resolved_to': lookup[resolved].name
+                                              if status in {'local', 'provided'} else None})
+        self.dependency_edges.sort(key=lambda x: (x['resource'].casefold(), x['dependency'].casefold()))
+        # Iterative DFS avoids recursion-depth errors on large server resource trees.
         state: dict[str, int] = {}
         reported: set[tuple[str, str]] = set()
-
-        def visit(node: str) -> None:
-            state[node] = 1
-            for dest in sorted(graph.get(node, ())):
-                if state.get(dest) == 1 and (node, dest) not in reported:
+        for first in sorted(graph):
+            if state.get(first, 0):
+                continue
+            state[first] = 1
+            stack: list[tuple[str, object]] = [(first, iter(sorted(graph[first])))]
+            while stack:
+                node, edges = stack[-1]
+                dest = next(edges, None)
+                if dest is None:
+                    state[node] = 2
+                    stack.pop()
+                elif state.get(dest) == 1 and (node, dest) not in reported:
                     self.add('error', 'DEPENDENCY_CYCLE', lookup[node],
                              f'Dependency cycle detected involving {lookup[node].name!r} and {lookup[dest].name!r}.')
                     reported.add((node, dest))
                 elif state.get(dest, 0) == 0:
-                    visit(dest)
-            state[node] = 2
-
-        for node in sorted(graph):
-            if state.get(node, 0) == 0:
-                visit(node)
+                    state[dest] = 1
+                    stack.append((dest, iter(sorted(graph[dest]))))
 
     def run(self) -> dict:
         if not self.root.is_dir():
             raise ValueError(f'Scan path is not a directory: {self.root}')
+        self.findings.clear()
+        self.resources.clear()
+        self.dependency_edges.clear()
         self.discover()
         self.check_resources()
         self.check_dependencies()
@@ -180,9 +257,11 @@ class Analyzer:
                                           f.severity, f.code, f.message))
         counts = Counter(f.severity for f in self.findings)
         return {
-            'schema_version': '1.0',
+            'schema_version': '1.2',
             'scan_root': str(self.root),
             'resources_scanned': len(self.resources),
+            'resource_names': sorted((r.name for r in self.resources), key=str.casefold),
+            'dependency_edges': self.dependency_edges,
             'summary': {sev: counts[sev] for sev in ('error', 'warning', 'info')},
             'findings': [f.to_dict() for f in self.findings],
         }

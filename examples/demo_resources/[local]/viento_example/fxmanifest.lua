@@ -1,6 +1,6 @@
 fx_version 'cerulean'
 game 'gta5'
-author 'cant0x'
+author 'jact0x74'
 description 'Example with intentional warnings and errors'
 client_scripts {
     'client/*.lua',
