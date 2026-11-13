@@ -14,6 +14,9 @@ CALLS = {
     ('load',): ('LUA_DYNAMIC_EXEC', 'Uses load(); review dynamically evaluated code.'),
     ('os', 'execute'): ('LUA_OS_COMMAND', 'Uses os.execute(); review command execution.'),
     ('io', 'popen'): ('LUA_OS_COMMAND', 'Uses io.popen(); review shell process access.'),
+    ('PerformHttpRequest',): ('LUA_EXTERNAL_HTTP', 'Uses PerformHttpRequest(); review destination and data handling.'),
+    ('ExecuteCommand',): ('LUA_SERVER_COMMAND', 'Uses ExecuteCommand(); review authorization and command arguments.'),
+    ('SaveResourceFile',): ('LUA_RESOURCE_WRITE', 'Uses SaveResourceFile(); review write scope and input validation.'),
 }
 
 def scan_lua(source: str) -> list[LuaSignal]:

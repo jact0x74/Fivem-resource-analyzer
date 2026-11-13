@@ -35,9 +35,14 @@ def main(argv: list[str] | None = None) -> int:
                         help='Known external resource (repeat as necessary)')
     parser.add_argument('--audit-lua', action='store_true',
                         help='Opt-in heuristic review of declared local Lua script calls')
+    parser.add_argument('--performance-hints', action='store_true',
+                        help='Opt-in hints for possible non-yielding Lua loops (not resmon)')
+    parser.add_argument('--server-cfg', type=Path,
+                        help='Read server.cfg, nested exec files and explicit resource startup order')
     args = parser.parse_args(argv)
     try:
-        result = Analyzer(args.path, set(args.available), audit_lua=args.audit_lua).run()
+        result = Analyzer(args.path, set(args.available), audit_lua=args.audit_lua, server_cfg=args.server_cfg,
+                          performance_hints=args.performance_hints).run()
         if args.format == 'json':
             content = json.dumps(result, ensure_ascii=False, indent=2) + '\n'
         elif args.format == 'html':

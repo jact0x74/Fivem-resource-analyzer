@@ -2,140 +2,146 @@
 
 [![Python tests](https://github.com/jact0x74/Fivem-resource-analyzer/actions/workflows/tests.yml/badge.svg)](https://github.com/jact0x74/Fivem-resource-analyzer/actions/workflows/tests.yml)
 
-A **read-only, dependency-free** static analyzer for [FiveM / Cfx.re resource manifests](https://docs.fivem.net/docs/scripting-reference/resource-manifest/). Scan a resource folder or a complete `resources/` directory, including `[category]` directories. No running FiveM server required.
+An independent **read-only, dependency-free Python static analyzer** for FiveM/Cfx.re server resources and (optionally) `server.cfg`. Scan one resource or an entire `resources/` tree, including `[category]` directories, without running FXServer.
 
-**Current version:** `v0.2.1` · Python 3.10+ · Windows, Linux, macOS · MIT licensed.
+**Version:** `v0.3.0` · **Python:** 3.10+ · **Platforms:** Windows / Linux / macOS · **License:** MIT.
 
-> Independent community project. Not affiliated with or endorsed by Cfx.re, FiveM, Rockstar Games or Anthropic.
+> Independent community project; not affiliated with or endorsed by Cfx.re, FiveM, Rockstar Games or Anthropic.
 
-## What it checks
+## Features
 
-- Missing paths in client/server/shared script declarations, `files`, `ui_page`, `loadscreen`, and `data_file` declarations.
-- Manifest metadata such as `fx_version` and `game`/`games`, alongside legacy `__resource.lua` warnings.
-- Duplicate resource names, missing-in-scan dependencies, self-dependencies, dependency cycles, and `provide` aliases.
-- Whether local `ui_page` files and HTML-referenced scripts, stylesheets, and images are present and included in `files`/`file` packfiles.
-- **Opt-in** Lua call heuristics for `loadstring(...)`, `load(...)`, `os.execute(...)`, and `io.popen(...)` in declared local `.lua` files.
-- Self-contained **HTML report**, JSON report for automation, and **Graphviz DOT** dependency graph output.
+| Area | Included checks |
+| --- | --- |
+| Resource manifests | Missing referenced files, missing `fx_version` / `game`, legacy manifests, duplicate names, unsupported dynamic declarations |
+| Dependencies | Missing-in-scan resources, `provide` aliases, self-dependencies, cycles; Graphviz DOT export |
+| NUI | Local page / HTML asset existence and `files` packfile inclusion |
+| `server.cfg` (v0.3.0) | `start`, `ensure`, `stop`, `restart`, category expansion, nested `exec` and `exec @resource/...` |
+| Startup diagnostics (v0.3.0) | Apparent dependency ordering, duplicate `ensure`, missing / cyclic config includes, unknown resources |
+| Config review (v0.3.0) | Heuristics for publicly replicated sensitive convar **names**, and enabled `sv_scriptHookAllowed` (no values are reported) |
+| Lua security review | **Opt-in** flags for dynamic execution, OS commands, outbound HTTP calls, server command execution and resource writes |
+| Lua performance review (v0.3.0) | **Opt-in** simple `while true do ... end` constructs without visible `Wait`/`Citizen.Wait` (review hint only) |
+| Reports | Terminal, JSON, Graphviz DOT, searchable and severity-filterable standalone HTML dashboard |
 
-All checks are **static**. The analyzer does not execute Lua, JavaScript, or resource files; it does not modify the source being scanned. Reported relative file paths consistently use `/` on every supported operating system.
+All checks are **static and heuristic**. They cannot prove exploitability, correct FXServer runtime behavior, server security, or actual CPU/resmon performance.
 
-## Quick start (Windows, no installation)
+## Quick start (Windows PowerShell)
 
-1. Install [Python 3.10+](https://www.python.org/downloads/).
-2. Download the repository's ZIP archive and extract it.
-3. Open **PowerShell** in the extracted project directory.
-4. Run:
+Install [Python 3.10+](https://www.python.org/downloads/), download this repository as ZIP, extract it, and open PowerShell in the project folder.
 
 ```powershell
 py vra.py ".\examples\demo_resources"
 ```
 
-The demo intentionally includes one missing script and one unpackaged UI page so you can see example findings. An exit code of `1` is expected for this demo.
+The demo intentionally references an absent script and an unpackaged UI page. An exit code of **1 is expected** because the demo contains an error.
 
-Scan your FiveM server's `resources` directory (read-only):
+### New: inspect `server.cfg` and startup order
 
 ```powershell
-py vra.py "C:\path\to\resources"
+py vra.py ".\examples\demo_resources" --server-cfg ".\examples\demo_server\server.cfg"
 ```
 
-### HTML report
+The example config uses a nested `exec`, starts `viento_example` before its `sample_utils` dependency (an intentional `CFG_DEP_ORDER` warning), and then starts `[standalone]`.
+
+For a real FiveM server, pass the server's **resources directory** plus its **server.cfg** path. The analyzer will not connect to, start, or modify the server:
 
 ```powershell
-py vra.py ".\examples\demo_resources" --format html --output report.html
+py vra.py "D:\FXServer\server-data\resources" --server-cfg "D:\FXServer\server-data\server.cfg" --format html --output report.html
 Start-Process .\report.html
 ```
 
-You can open `report.html` locally without internet. It includes resource counts, findings, dependency details, and a scanned-resource inventory. Input text is HTML-escaped. Reports contain local file paths; review them before sharing. Generated root-level demo reports are Git-ignored to reduce accidental publishing of machine paths.
+The above paths are examples; change them to match your machine.
+
+### Security and performance review (opt-in)
+
+```powershell
+py vra.py ".\examples\demo_resources" --audit-lua --performance-hints --format html --output audit.html
+```
+
+- `--audit-lua` flags function calls for **manual security review**, **not** known vulnerabilities. Legitimate resources often use the flagged functions.
+- `--performance-hints` looks for a limited set of trivially non-yielding loops. It **does not measure resmon**, detect all loop problems, or identify real CPU usage.
+- Files, manifests and config declarations are **never executed**. Only local files are read.
+
+### Standalone HTML report (v0.3.0)
+
+```powershell
+py vra.py ".\examples\demo_resources" --server-cfg ".\examples\demo_server\server.cfg" --format html --output report.html
+Start-Process .\report.html
+```
+
+Filter findings by severity, search resources/rule names/paths, inspect dependencies, and review the static startup timeline. The dashboard contains a small inline JavaScript filter (no external libraries or network requests). All scanned content is HTML-escaped; the script never executes or interpolates the scanned content. **Review local file paths in the report before sharing.**
 
 ### Dependency graph
 
 ```powershell
-py vra.py "C:\path\to\resources" --format dot --output dependencies.dot
+py vra.py ".\examples\demo_resources" --format dot --output dependencies.dot
 ```
 
-To render the DOT graph as an image, you may install [Graphviz](https://graphviz.org/) separately and run:
+To render the DOT file visually, install [Graphviz](https://graphviz.org/) (optional) and run `dot -Tpng dependencies.dot -o dependencies.png`.
+
+### JSON / CI integration
 
 ```powershell
-dot -Tpng dependencies.dot -o dependencies.png
+py vra.py ".\examples\demo_resources" --server-cfg ".\examples\demo_server\server.cfg" --format json --output report.json
+py vra.py ".\examples\demo_resources" --strict
 ```
 
-No Graphviz installation is required to **generate** the `.dot` file. Edges referring to missing or externally declared resources are dashed. A `provide` alias is resolved to its actual resource where known.
-
-### Optional Lua call review
-
-```powershell
-py vra.py "C:\path\to\resources" --audit-lua
-py vra.py "C:\path\to\resources" --audit-lua --format html --output audit.html
-```
-
-The Lua check examines declared **local** `.lua` scripts up to 2 MiB each. It excludes strings and comments in common Lua syntax. The detections are **review signals only**, not proof of malicious behavior or an exploitable vulnerability. The check is **off by default** to minimize false alarms.
-
-### JSON output and CI
-
-```powershell
-py vra.py "C:\path\to\resources" --format json --output report.json
-py vra.py "C:\path\to\resources" --strict
-```
-
-The JSON report includes `schema_version` (`1.2` in this release), summary counts, findings and `dependency_edges`. Edges may include `resolved_to` for declared local or provided dependencies.
+JSON `schema_version` is **`1.3`** and includes `startup_order` and `cfg_files_scanned` alongside existing fields.
 
 ### Linux / macOS
 
 ```bash
-python3 vra.py ./examples/demo_resources --format html --output report.html
-python3 vra.py /srv/fivem/resources --audit-lua
+python3 vra.py ./examples/demo_resources --server-cfg ./examples/demo_server/server.cfg --format html --output report.html
 ```
 
-### Optional CLI installation
+### Optional editable installation
 
 ```bash
 python -m pip install -e .
 fivem-analyzer ./examples/demo_resources
-# The short command "vra" works too.
+# Short command: vra ./examples/demo_resources
 ```
 
-## Command-line options
+## CLI reference
 
-| Flag | Function |
+| Argument | Meaning |
 | --- | --- |
-| `--format text` | Terminal report (default) |
-| `--format json` | Machine-readable JSON report |
-| `--format html` | Standalone HTML report (no remote assets or JavaScript) |
-| `--format dot` | Graphviz dependency graph |
-| `--output PATH` | Write to the given file |
-| `--audit-lua` | Opt-in Lua source call review |
-| `--available RESOURCE` | Ignore absent-in-scan warning for known external dependency; repeatable |
-| `--strict` | Fail on warnings as well as errors |
-| `--version` | Print program version |
-| `--help` | Show command reference |
+| `path` | Resource directory or `resources/` root to scan |
+| `--server-cfg FILE` | Read a server config file and statically expand supported nested `exec` commands |
+| `--audit-lua` | Review declared local Lua scripts for selected calls (opt-in) |
+| `--performance-hints` | Review simple possible non-yielding loops (opt-in) |
+| `--format text\|json\|html\|dot` | Output format; text is default |
+| `--output FILE` | Write output to a file instead of stdout |
+| `--available RESOURCE` | Mark an externally provided dependency/resource as known; repeatable |
+| `--strict` | Return failure on warnings as well as errors |
+| `--version` / `--help` | Print version / CLI help |
 
-**Exit codes:** `0` no policy failures, `1` findings exceeding policy, `2` invalid path or scanning / output error. A warning does not fail unless `--strict` is set.
+**Exit status:** 0 = no policy failure; 1 = errors or (with `--strict`) warnings; 2 = invalid input/output or read failure. GitHub tests exercise Windows and Ubuntu under Python 3.10, 3.12 and 3.13.
 
-## Limitations and safety
+## Important limitations
 
-- `fxmanifest.lua` is executable Lua. To be safe, the analyzer parses **common literal declarations only** and never evaluates expressions. Dynamic metadata may be skipped and reported for manual review.
-- Dependency presence is relative to the folder you scan. FiveM built-ins or resources located elsewhere can legitimately be reported as missing. Use `--available RESOURCE` to acknowledge these.
-- HTML asset inspection currently covers **literal `src` and stylesheet/icon/preload `href` references in HTML**, not assets dynamically loaded by JavaScript or referenced inside CSS.
-- File globs are matched with the local host's filesystem and may differ from all FiveM packfile behaviors.
-- Lua findings are conservative **heuristics**; they do not establish exploitability, safety, or malware presence. No performance / resmon data, runtime behavior, or network traffic is evaluated.
-- Do not publicly upload private scripts, credentials, access tokens or unreviewed audit reports.
+- **No live server integration:** Order analysis describes only explicit commands in the inspected config stream. FXServer can start dependencies automatically, use additional runtime commands and other resources; order diagnostics are **hints** rather than proof of broken startup. Category expansion approximates server behavior from the scanned directory structure.
+- **Conservative config parser:** Reads plain, line-oriented `start`, `ensure`, `stop`, `restart`, `exec`, `set`, `setr`, `sets`, and `sv_scriptHookAllowed`; it does not emulate variable substitution, conditional behavior, arbitrary commands or FiveM's complete config interpreter. Includes use paths relative to the server-data directory, with `@resource/path` supported when the resource is in the scan. Unknown includes and path traversal are not followed. Include depth/count/size are bounded.
+- **Config privacy:** Values of `set`, `setr` and `sets` are not stored in reports. The analyzer **still reads the files locally** to inspect commands. Do not publish real `server.cfg`, tokens, or sensitive local reports. If credentials occur inside filenames or unrelated manifest fields, those may appear as text.
+- **Manifest safety:** `fxmanifest.lua` is executable Lua; this program parses common literal declarations only, and never executes expressions. Dynamic metadata may be skipped.
+- **Lua audit limits:** Only manifest-declared local `.lua` files up to 2 MiB are inspected. Detection does not cover all malicious code or all performance problems, and may flag harmless patterns.
+- **Packfile hints:** Local filesystem globbing can differ from actual FXServer packfile rules. HTML asset checking covers literal HTML references, not dynamically loaded JavaScript/CSS assets.
+- **Read-only:** The scan does not edit resources or configuration; only `--output FILE` writes a report where you request it.
 
-## Development and contributions
+## Contributing
 
-Run tests:
+Issues, real (redacted) reproducible examples, tests and pull requests are welcome. **Never upload private scripts, access tokens, database strings, credentials, or server secrets** in an issue or report. See [CONTRIBUTING.md](CONTRIBUTING.md), [SECURITY.md](SECURITY.md), and [CHANGELOG.md](CHANGELOG.md).
+
+Run unit tests with:
 
 ```bash
 python -m unittest discover -s tests -v
 ```
 
-The test suite contains **40 tests** at release time. GitHub Actions runs tests on Windows and Ubuntu with Python 3.10, 3.12, and 3.13. Platform-restricted symlink tests may be skipped where unsupported.
+## Official Cfx.re references
 
-See [CONTRIBUTING.md](CONTRIBUTING.md), [SECURITY.md](SECURITY.md) and [CHANGELOG.md](CHANGELOG.md). Bugs and realistic test fixtures are welcome.
+- [Server commands (`start`, `ensure`, `exec`)](https://docs.fivem.net/docs/server-manual/server-commands/)
+- [Resource manifest (`dependency`, `provide`, NUI)](https://docs.fivem.net/docs/scripting-reference/resource-manifest/)
+- [Convars (`set`, `setr`, `sets`)](https://docs.fivem.net/docs/scripting-reference/convars/)
+- [Resource directories and categories](https://docs.fivem.net/docs/scripting-manual/introduction/introduction-to-resources/)
 
-## Official FiveM references
-
-- [Resource manifest](https://docs.fivem.net/docs/scripting-reference/resource-manifest/)
-- [Introduction to resources](https://docs.fivem.net/docs/scripting-manual/introduction/introduction-to-resources/)
-- [Fullscreen NUI](https://docs.fivem.net/docs/scripting-manual/nui-development/full-screen-nui/)
-
-**License:** MIT — [LICENSE](LICENSE).
+**License:** [MIT](LICENSE).

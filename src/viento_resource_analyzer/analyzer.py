@@ -9,6 +9,8 @@ from pathlib import Path
 from .manifest import Manifest, parse_manifest
 from .lua_audit import scan_lua
 from .nui import referenced_files
+from .cfg_audit import CfgParser, evaluate_startup
+from .performance import scan_performance
 
 SKIP_DIRS = {'.git', '.venv', 'venv', 'node_modules', '__pycache__', '.mypy_cache', '.pytest_cache'}
 SCRIPT_KEYS = {'client_script', 'server_script', 'shared_script',
@@ -40,13 +42,18 @@ class Resource:
 
 
 class Analyzer:
-    def __init__(self, root: Path, available: set[str] | None = None, *, audit_lua: bool = False) -> None:
+    def __init__(self, root: Path, available: set[str] | None = None, *, audit_lua: bool = False,
+                 server_cfg: Path | None = None, performance_hints: bool = False) -> None:
         self.root = root.resolve()
         self.available = {v.casefold() for v in (available or set())}
         self.findings: list[Finding] = []
         self.resources: list[Resource] = []
         self.audit_lua = audit_lua
         self.dependency_edges: list[dict[str, str | None]] = []
+        self.server_cfg = server_cfg
+        self.performance_hints = performance_hints
+        self.startup_order: list[dict] = []
+        self.cfg_files_scanned = 0
 
     def add(self, severity: str, code: str, res: Resource, message: str,
             line: int | None = None, location: Path | None = None) -> None:
@@ -131,7 +138,7 @@ class Analyzer:
                 self.add('info', 'LUA54_DEPRECATED', res,
                          'lua54 metadata is no longer required in current FXServer versions.')
             self.check_nui_assets(res)
-            if self.audit_lua:
+            if self.audit_lua or self.performance_hints:
                 self.check_lua(res)
 
 
@@ -186,9 +193,14 @@ class Analyzer:
                     self.add('info', 'LUA_AUDIT_SKIPPED', res,
                              f'Unable to read source file: {path.name}', location=path)
                     continue
-                for flag in scan_lua(contents):
-                    self.add('warning', flag.code, res, flag.description,
-                             flag.line, location=path)
+                if self.audit_lua:
+                    for flag in scan_lua(contents):
+                        self.add('warning', flag.code, res, flag.description,
+                                 flag.line, location=path)
+                if self.performance_hints:
+                    for flag in scan_performance(contents):
+                        self.add('info', flag.code, res, flag.description,
+                                 flag.line, location=path)
 
     def check_dependencies(self) -> None:
         lookup = {res.name.casefold(): res for res in self.resources}
@@ -244,24 +256,44 @@ class Analyzer:
                     state[dest] = 1
                     stack.append((dest, iter(sorted(graph[dest]))))
 
+    def check_server_cfg(self) -> None:
+        """Read server configs without executing commands or serializing secret values."""
+        if self.server_cfg is None:
+            return
+        lookup = {r.name.casefold(): r.path for r in self.resources}
+        parser = CfgParser(Path(self.server_cfg), lookup)
+        commands, notices = parser.parse()
+        self.cfg_files_scanned = parser._files_seen
+        for notice in notices:
+            self.findings.append(Finding(notice.severity, notice.code, '[server.cfg]',
+                                         notice.message, notice.file, notice.line))
+        self.startup_order, issues = evaluate_startup(commands, self.resources, self.root, self.available)
+        for severity, code, message, file, line in issues:
+            self.findings.append(Finding(severity, code, '[server.cfg]', message, file, line))
+
     def run(self) -> dict:
         if not self.root.is_dir():
             raise ValueError(f'Scan path is not a directory: {self.root}')
         self.findings.clear()
         self.resources.clear()
         self.dependency_edges.clear()
+        self.startup_order.clear()
+        self.cfg_files_scanned = 0
         self.discover()
         self.check_resources()
         self.check_dependencies()
+        self.check_server_cfg()
         self.findings.sort(key=lambda f: (f.resource.casefold(), f.file, f.line or 0,
                                           f.severity, f.code, f.message))
         counts = Counter(f.severity for f in self.findings)
         return {
-            'schema_version': '1.2',
+            'schema_version': '1.3',
             'scan_root': str(self.root),
             'resources_scanned': len(self.resources),
             'resource_names': sorted((r.name for r in self.resources), key=str.casefold),
             'dependency_edges': self.dependency_edges,
+            'startup_order': self.startup_order,
+            'cfg_files_scanned': self.cfg_files_scanned,
             'summary': {sev: counts[sev] for sev in ('error', 'warning', 'info')},
             'findings': [f.to_dict() for f in self.findings],
         }

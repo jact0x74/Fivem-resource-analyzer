@@ -17,3 +17,9 @@ reports/
 /audit.html
 /dependencies.dot
 /dependencies.png
+
+# Avoid accidentally committing a production server configuration or secrets.
+/server.cfg
+/secrets.cfg
+/.env
+/.env.*

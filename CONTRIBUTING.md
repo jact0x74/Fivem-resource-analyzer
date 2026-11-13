@@ -10,7 +10,7 @@ Thanks for your interest! Issues, test fixtures and pull requests are welcome.
 
 ## Scope
 
-This project focuses on **read-only** manifest analysis. It does not evaluate Lua or execute server scripts. Avoid sending real authentication tokens, session keys or paid/escrow-protected code in issues or PRs.
+This project focuses on **read-only** resource, manifest and optional server.cfg analysis. It does not evaluate Lua or execute server scripts. Avoid sending real server.cfg credentials, authentication tokens, session keys, database URLs or paid/escrow-protected code in issues or PRs. For config bugs, create a tiny synthetic server.cfg containing only fake values.
 
 ## Code of Conduct
 

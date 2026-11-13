@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.3.0
+
+- Added `--server-cfg` analysis for line-oriented Cfx resource commands and safely bounded nested `exec` includes, including `exec @resource/path` when the resource is in the scan.
+- Added a static startup timeline, category expansion, dependency-order suggestions, repeated-`ensure` warnings and safe include diagnostics; runtime behavior is intentionally not emulated.
+- Added convar-name heuristics to flag potentially sensitive values used with replicated/public `setr` / `sets`; **configuration values are never included in reports**.
+- Added `sv_scriptHookAllowed` review hints.
+- Expanded **opt-in** Lua code review to outbound HTTP, FXServer command execution and resource file writes. Findings are review signals, not vulnerability claims.
+- Added **opt-in** `--performance-hints` for obvious non-yielding `while true` loops; not a runtime/resmon measurement.
+- Rebuilt the self-contained HTML dashboard with offline search, severity filtering, startup timeline, and escaped untrusted content; fixed inline JavaScript does not make network requests.
+- Expanded the JSON report schema to `1.3`, adding `startup_order` and `cfg_files_scanned` fields.
+- Added a harmless sample server.cfg + nested exec fixture, updated documentation and current GitHub Actions versions.
+- Test suite expanded from 40 to **74** unit/integration tests.
+
 ## 0.2.1
 
 - Fixed Windows path separators in finding `file` fields for consistent JSON, text and HTML output.

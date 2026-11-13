@@ -173,7 +173,7 @@ class AnalyzerV020Tests(unittest.TestCase):
         edge = next(e for e in report['dependency_edges'] if e['resource'] == 'consumer')
         self.assertEqual(edge['resolved_to'], 'replacement')
         self.assertEqual(edge['status'], 'provided')
-        self.assertEqual(report['schema_version'], '1.2')
+        self.assertEqual(report['schema_version'], '1.3')
 
     def test_cli_generates_html_report(self):
         self.resource('a')
