@@ -9,6 +9,7 @@ from pathlib import Path
 from .analyzer import Analyzer
 from .html_report import render_html
 from .dot_report import render_dot
+from .csv_report import render_csv
 from . import __version__
 
 
@@ -28,8 +29,10 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description='Read-only static checks for FiveM resource manifests.')
     parser.add_argument('--version', action='version', version=f'%(prog)s {__version__}')
     parser.add_argument('path', type=Path, help='Resource folder or resources/ root to scan')
-    parser.add_argument('--format', choices=['text', 'json', 'html', 'dot'], default='text', help='Report format')
+    parser.add_argument('--format', choices=['text', 'json', 'html', 'dot', 'csv'], default='text', help='Report format')
     parser.add_argument('--output', type=Path, help='Write report to a file instead of stdout')
+    parser.add_argument('--redact-root', action='store_true',
+                        help='Hide absolute scan_root in JSON/HTML and other generated reports')
     parser.add_argument('--strict', action='store_true', help='Return nonzero on warnings as well as errors')
     parser.add_argument('--available', action='append', default=[], metavar='RESOURCE',
                         help='Known external resource (repeat as necessary)')
@@ -43,12 +46,16 @@ def main(argv: list[str] | None = None) -> int:
     try:
         result = Analyzer(args.path, set(args.available), audit_lua=args.audit_lua, server_cfg=args.server_cfg,
                           performance_hints=args.performance_hints).run()
+        if args.redact_root:
+            result['scan_root'] = '[redacted]'
         if args.format == 'json':
             content = json.dumps(result, ensure_ascii=False, indent=2) + '\n'
         elif args.format == 'html':
             content = render_html(result)
         elif args.format == 'dot':
             content = render_dot(result)
+        elif args.format == 'csv':
+            content = render_csv(result)
         else:
             content = render_text(result)
         if args.output:

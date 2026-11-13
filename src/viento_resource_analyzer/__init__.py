@@ -1,2 +1,2 @@
-"""FiveM Resource Analyzer: read-only, dependency-free manifest linting."""
-__version__ = '0.3.0'
+"""FiveM Resource Analyzer: read-only static checks for resource folders."""
+__version__ = '0.4.0'

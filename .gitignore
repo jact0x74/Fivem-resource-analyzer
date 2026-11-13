@@ -23,3 +23,6 @@ reports/
 /secrets.cfg
 /.env
 /.env.*
+/findings.csv
+/report.csv
+/audit.csv

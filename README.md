@@ -4,7 +4,7 @@
 
 An independent **read-only, dependency-free Python static analyzer** for FiveM/Cfx.re server resources and (optionally) `server.cfg`. Scan one resource or an entire `resources/` tree, including `[category]` directories, without running FXServer.
 
-**Version:** `v0.3.0` · **Python:** 3.10+ · **Platforms:** Windows / Linux / macOS · **License:** MIT.
+**Version:** `v0.4.0` · **Python:** 3.10+ · **Platforms:** Windows / Linux / macOS · **License:** MIT.
 
 > Independent community project; not affiliated with or endorsed by Cfx.re, FiveM, Rockstar Games or Anthropic.
 
@@ -18,9 +18,9 @@ An independent **read-only, dependency-free Python static analyzer** for FiveM/C
 | `server.cfg` (v0.3.0) | `start`, `ensure`, `stop`, `restart`, category expansion, nested `exec` and `exec @resource/...` |
 | Startup diagnostics (v0.3.0) | Apparent dependency ordering, duplicate `ensure`, missing / cyclic config includes, unknown resources |
 | Config review (v0.3.0) | Heuristics for publicly replicated sensitive convar **names**, and enabled `sv_scriptHookAllowed` (no values are reported) |
-| Lua security review | **Opt-in** flags for dynamic execution, OS commands, outbound HTTP calls, server command execution and resource writes |
-| Lua performance review (v0.3.0) | **Opt-in** simple `while true do ... end` constructs without visible `Wait`/`Citizen.Wait` (review hint only) |
-| Reports | Terminal, JSON, Graphviz DOT, searchable and severity-filterable standalone HTML dashboard |
+| Lua security review | **Opt-in** heuristics for dynamic execution, local file execution, OS commands, outbound HTTP (including plain HTTP literals), server commands and resource writes |
+| Lua performance review | **Opt-in** simple `while true` / `repeat ... until false` loops without visible `Wait`, and loop logging hints (review signals only) |
+| Reports | Terminal, JSON, CSV, Graphviz DOT and standalone HTML dashboard with severity, resource and text filters |
 
 All checks are **static and heuristic**. They cannot prove exploitability, correct FXServer runtime behavior, server security, or actual CPU/resmon performance.
 
@@ -68,7 +68,22 @@ py vra.py ".\examples\demo_resources" --server-cfg ".\examples\demo_server\serve
 Start-Process .\report.html
 ```
 
-Filter findings by severity, search resources/rule names/paths, inspect dependencies, and review the static startup timeline. The dashboard contains a small inline JavaScript filter (no external libraries or network requests). All scanned content is HTML-escaped; the script never executes or interpolates the scanned content. **Review local file paths in the report before sharing.**
+Filter findings by severity, resource or text; reset filters; view a per-resource finding summary, dependencies, and a static startup timeline. The dashboard contains a small inline JavaScript filter (no external libraries or network requests). All scanned content is HTML-escaped; the script never executes or interpolates the scanned content. **Review local file paths in the report before sharing.**
+
+### New in v0.4.0: CSV export and path privacy
+
+```powershell
+py vra.py ".\examples\demo_resources" --format csv --output findings.csv
+py vra.py ".\examples\demo_resources" --format html --output report.html --redact-root
+```
+
+The CSV file contains one row per finding (severity, code, resource, relative file, line, message), compatible with common spreadsheet tools. Dangerous leading characters in values are escaped to discourage CSV formula execution. Use the ZIP/source directly; **do not** paste arbitrary real server credentials into bug reports.
+
+`--redact-root` hides the absolute `scan_root` value in JSON and HTML reports. It does not redact local relative file paths, suspicious strings in filenames, or files you manually include with a report. It is **not** full anonymization. Always review exported output before publishing.
+
+#### Opt-in static Lua checks in v0.4.0
+
+The Lua security review additionally spots direct `loadfile()` / `dofile()` calls, `PerformHttpRequestAwait()`, and calls to the supported HTTP functions with literal `http://` URLs (without printing the URL). The performance review adds simple `repeat ... until false` loops and `print()` in simple infinite loops. The rules are intentionally narrow and may produce both false positives and false negatives.
 
 ### Dependency graph
 
@@ -85,7 +100,7 @@ py vra.py ".\examples\demo_resources" --server-cfg ".\examples\demo_server\serve
 py vra.py ".\examples\demo_resources" --strict
 ```
 
-JSON `schema_version` is **`1.3`** and includes `startup_order` and `cfg_files_scanned` alongside existing fields.
+JSON `schema_version` remains **`1.3`** and includes `startup_order` and `cfg_files_scanned` alongside existing fields.
 
 ### Linux / macOS
 
@@ -109,8 +124,9 @@ fivem-analyzer ./examples/demo_resources
 | `--server-cfg FILE` | Read a server config file and statically expand supported nested `exec` commands |
 | `--audit-lua` | Review declared local Lua scripts for selected calls (opt-in) |
 | `--performance-hints` | Review simple possible non-yielding loops (opt-in) |
-| `--format text\|json\|html\|dot` | Output format; text is default |
+| `--format text\|json\|html\|dot\|csv` | Output format; text is default |
 | `--output FILE` | Write output to a file instead of stdout |
+| `--redact-root` | Replace the absolute scan root in reports with `[redacted]`; does not sanitize every finding |
 | `--available RESOURCE` | Mark an externally provided dependency/resource as known; repeatable |
 | `--strict` | Return failure on warnings as well as errors |
 | `--version` / `--help` | Print version / CLI help |

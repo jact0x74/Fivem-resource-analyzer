@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.4.0
+
+- Added a UTF-8 `--format csv` findings export (severity, code, resource, file, line and message) with CSV quoting and spreadsheet formula-injection protection.
+- Added `--redact-root` for safer sharing: replaces the absolute scan root in generated JSON/HTML output with `[redacted]` (it does **not** anonymize individual finding paths or secrets embedded in filenames).
+- Extended **opt-in** Lua review: `loadfile`, `dofile`, `PerformHttpRequestAwait`, and plaintext literal `http://` URLs. Suspect URL contents are **never echoed** into the new HTTP finding.
+- Extended **opt-in** performance hints for simple `repeat ... until false` loops and `print()` calls inside simple unconditional loops. These are review suggestions, not measurements.
+- Added a resource selector, clear-filters button and per-resource finding summary to the offline HTML dashboard; improved long rule-code layout.
+- Added bug report / feature request / PR templates and 22 new tests, increasing the test suite from 74 to **96**.
+- Kept JSON schema version `1.3` and previous CLI options for backward compatibility.
+
+
 ## 0.3.0
 
 - Added `--server-cfg` analysis for line-oriented Cfx resource commands and safely bounded nested `exec` includes, including `exec @resource/path` when the resource is in the scan.
